@@ -1,4 +1,6 @@
+import { resolve } from "node:path";
 import Fastify, { type FastifyInstance } from "fastify";
+import fastifyStatic from "@fastify/static";
 
 import {
   buildPlannerGraph,
@@ -15,6 +17,12 @@ export const createApiServer = async (deps?: {
 
   const graph = deps?.graph ?? (await buildPlannerGraph());
   const app = Fastify({ logger: true });
+
+  await app.register(fastifyStatic, {
+    root: resolve(process.cwd(), "public"),
+    prefix: "/",
+    index: ["index.html"],
+  });
 
   registerPlanRoutes(app, graph);
 

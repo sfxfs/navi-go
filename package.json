@@ -16,6 +16,7 @@
     "acceptance": "./scripts/acceptance.sh"
   },
   "dependencies": {
+    "@fastify/static": "^9.1.1",
     "@langchain/core": "^1.0.6",
     "@langchain/langgraph": "^1.0.2",
     "@langchain/langgraph-checkpoint-postgres": "^1.0.0",
