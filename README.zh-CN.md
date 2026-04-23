@@ -192,7 +192,3 @@ curl -X POST http://localhost:3000/plan \
 - 部分环境变量在 Zod schema 中标记为**可选**，但在实际运行到相关代码路径时，会通过 `require*` 辅助函数**强制校验**。
 - `acceptance` 脚本仅在 `OPENAI_API_KEY`、`DUFFEL_API_TOKEN` 和 `POSTGRES_URL` 均设置时才会执行线上 API CLI 场景。
 - Open-Meteo 免费预报 API 对日期范围有限制（通常约 14 天）。使用实时天气查询时，请选择允许窗口内的日期。
-
-## 许可证
-
-MIT
