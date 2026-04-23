@@ -34,7 +34,7 @@ jobs:
         run: npm ci
 
       - name: Dependency vulnerability audit (production)
-        run: npm audit --audit-level=moderate --omit=dev
+        run: npm audit --audit-level=high --omit=dev
 
       - name: Secret detection (TruffleHog)
         uses: trufflesecurity/trufflehog@main
