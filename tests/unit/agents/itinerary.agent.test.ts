@@ -34,6 +34,7 @@ const makeBaseState = (): PlannerState => ({
     },
   ],
   flightOptions: [],
+  returnFlightOptions: [],
   weatherRisks: null,
   itineraryDraft: [],
   budgetAssessment: null,
@@ -41,6 +42,9 @@ const makeBaseState = (): PlannerState => ({
   safetyFlags: [],
   decisionLog: [],
   finalPlan: null,
+  naturalLanguage: null,
+  parsedRequest: null,
+  pendingQuestions: null,
 });
 
 describe("itinerary agent", () => {
@@ -154,5 +158,60 @@ describe("itinerary agent", () => {
 
     expect(update.itineraryDraft?.[0]?.activities.join(" ")).toContain("Oslo Old Town");
     expect(update.itineraryDraft?.[0]?.theme).toContain("Oslo Old Town");
+  });
+
+  it("marks pre-arrival dates as transit days when flight arrives later", async () => {
+    const state = makeBaseState();
+
+    const update = await runItineraryAgent(state, {
+      searchFlights: async () => [
+        {
+          offerId: "F-LATE",
+          totalPrice: 310,
+          currency: "USD",
+          seats: 2,
+          route: ["SFO-HND", "HND-FCO"],
+          departureAt: "2026-09-01T18:00:00",
+          arrivalAt: "2026-09-02T22:10:00",
+          carriers: ["ZZ"],
+        },
+      ],
+      fetchWeather: async () => ({
+        location: "Rome, Italy",
+        timezone: "Europe/Rome",
+        daily: [
+          {
+            date: "2026-09-01",
+            weatherCode: 1,
+            temperatureMax: 29,
+            temperatureMin: 21,
+            precipitationProbabilityMax: 10,
+            riskLevel: "LOW",
+          },
+          {
+            date: "2026-09-02",
+            weatherCode: 2,
+            temperatureMax: 27,
+            temperatureMin: 20,
+            precipitationProbabilityMax: 25,
+            riskLevel: "LOW",
+          },
+          {
+            date: "2026-09-03",
+            weatherCode: 1,
+            temperatureMax: 28,
+            temperatureMin: 20,
+            precipitationProbabilityMax: 15,
+            riskLevel: "LOW",
+          },
+        ],
+        highRiskDates: [],
+      }),
+    });
+
+    expect(update.itineraryDraft?.[0]?.theme).toBe("Transit to Rome");
+    expect(update.itineraryDraft?.[0]?.activities[0]).toContain("F-LATE");
+    expect(update.itineraryDraft?.[1]?.theme).toBe("Arrival in Rome");
+    expect(update.itineraryDraft?.[2]?.theme).toMatch(/(history|food) in /);
   });
 });

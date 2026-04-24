@@ -34,7 +34,18 @@ describe("plan API endpoint", () => {
       model: fakeModel,
       checkpointer: createInMemoryCheckpointer(),
       itineraryAgentDependencies: {
-        searchFlights: async () => [],
+        searchFlights: async () => [
+          {
+            offerId: "offer-rome-1",
+            totalPrice: 499.25,
+            currency: "USD",
+            seats: 4,
+            route: ["JFK", "FCO"],
+            departureAt: "2026-08-01T09:00:00Z",
+            arrivalAt: "2026-08-01T17:00:00Z",
+            carriers: ["AZ"],
+          },
+        ],
         fetchWeather: async () => ({
           location: "Rome, Italy",
           timezone: "Europe/Rome",
@@ -72,6 +83,7 @@ describe("plan API endpoint", () => {
         userRequest: {
           userId: "api-user",
           requestText: "Plan a history-focused trip",
+          originIata: "JFK",
           destinationHint: "Rome",
           destinationCityCode: "ROM",
           destinationIata: "FCO",
@@ -98,5 +110,18 @@ describe("plan API endpoint", () => {
     expect(getResponse.statusCode).toBe(200);
     const parsedGet = getResponse.json();
     expect(parsedGet.values.finalPlan.selectedDestination).toBe("Rome");
+    expect(parsedGet.values.finalPlan.selectedFlightOfferId).toBe("offer-rome-1");
+    expect(parsedGet.values.flightOptions).toEqual([
+      {
+        offerId: "offer-rome-1",
+        totalPrice: 499.25,
+        currency: "USD",
+        seats: 4,
+        route: ["JFK", "FCO"],
+        departureAt: "2026-08-01T09:00:00Z",
+        arrivalAt: "2026-08-01T17:00:00Z",
+        carriers: ["AZ"],
+      },
+    ]);
   });
 });

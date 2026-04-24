@@ -31,6 +31,7 @@ const makeState = (budget: number): PlannerState => ({
       carriers: ["NH"],
     },
   ],
+  returnFlightOptions: [],
   weatherRisks: null,
   itineraryDraft: [
     { date: "2026-07-01", theme: "museum", activities: ["A"] },
@@ -42,6 +43,9 @@ const makeState = (budget: number): PlannerState => ({
   safetyFlags: [],
   decisionLog: [],
   finalPlan: null,
+  naturalLanguage: null,
+  parsedRequest: null,
+  pendingQuestions: null,
 });
 
 describe("budget agent", () => {

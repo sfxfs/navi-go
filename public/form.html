@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NaviGo Planner — Form</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script defer src="/form.js"></script>
+  </head>
+  <body>
+    <main class="container">
+      <header class="hero">
+        <h1>NaviGo Travel Planner</h1>
+        <p>Submit a planning request and inspect the persisted state by thread ID.</p>
+        <p><a href="/">← Switch to chat mode</a></p>
+      </header>
+
+      <section class="card">
+        <h2>Create plan</h2>
+        <form id="plan-form" novalidate>
+          <div class="grid two-col">
+            <label>
+              Thread ID *
+              <input id="threadId" name="threadId" type="text" required minlength="1" placeholder="trip-2026-rome" />
+            </label>
+            <label>
+              Budget (USD) *
+              <input id="budget" name="budget" type="number" required min="1" step="1" placeholder="1800" />
+            </label>
+          </div>
+
+          <label>
+            Request text *
+            <textarea id="requestText" name="requestText" required minlength="1" rows="3" placeholder="Plan a history-focused trip with good food."></textarea>
+          </label>
+
+          <div class="grid two-col">
+            <label>
+              Travel start date *
+              <input id="travelStartDate" name="travelStartDate" type="date" required />
+            </label>
+            <label>
+              Travel end date *
+              <input id="travelEndDate" name="travelEndDate" type="date" required />
+            </label>
+          </div>
+
+          <div class="grid two-col">
+            <label>
+              Origin IATA
+              <input id="originIata" name="originIata" type="text" maxlength="3" placeholder="SFO" />
+            </label>
+            <label>
+              Destination hint
+              <input id="destinationHint" name="destinationHint" type="text" placeholder="Rome" />
+            </label>
+            <label>
+              Destination city code
+              <input id="destinationCityCode" name="destinationCityCode" type="text" maxlength="3" placeholder="ROM" />
+            </label>
+            <label>
+              Destination IATA
+              <input id="destinationIata" name="destinationIata" type="text" maxlength="3" placeholder="FCO" />
+            </label>
+          </div>
+
+          <label>
+            Interests (comma separated)
+            <input id="interests" name="interests" type="text" placeholder="history, food, museums" />
+          </label>
+
+          <div class="actions">
+            <button id="submit-button" type="submit">Create plan</button>
+            <span id="submit-status" class="status" aria-live="polite"></span>
+          </div>
+        </form>
+      </section>
+
+      <section class="card">
+        <h2>Read persisted state</h2>
+        <form id="state-form" class="inline-form" novalidate>
+          <label class="grow">
+            Thread ID *
+            <input id="stateThreadId" name="stateThreadId" type="text" required minlength="1" placeholder="trip-2026-rome" />
+          </label>
+          <button id="state-button" type="submit">Load state</button>
+        </form>
+        <p id="state-status" class="status" aria-live="polite"></p>
+      </section>
+
+      <section id="result-card" class="card hidden">
+        <h2>Result</h2>
+        <div id="result-content"></div>
+      </section>
+    </main>
+  </body>
+</html>

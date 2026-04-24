@@ -1,4 +1,5 @@
 import { makeDecisionLog, type PlannerState } from "../graph/state.js";
+import { pickRecommendedFlightOption } from "./flight-option-selection.js";
 
 export const runBudgetAgent = async (
   state: PlannerState,
@@ -7,12 +8,20 @@ export const runBudgetAgent = async (
     return {};
   }
 
-  const cheapestFlight = state.flightOptions
-    .map((option) => option.totalPrice)
-    .sort((a, b) => a - b)[0];
+  const recommendedFlight = pickRecommendedFlightOption(
+    state.flightOptions,
+    state.userRequest.travelStartDate,
+  );
+  const selectedFlightPrice = recommendedFlight?.totalPrice ?? 0;
+
+  const recommendedReturnFlight = pickRecommendedFlightOption(
+    state.returnFlightOptions,
+    state.userRequest.travelEndDate,
+  );
+  const selectedReturnFlightPrice = recommendedReturnFlight?.totalPrice ?? 0;
 
   const tripDays = state.itineraryDraft.length;
-  const tripNights = Math.max(tripDays - 1, 1);
+  const tripNights = Math.max(tripDays - 1, 0);
   const nightlyRateByPreference = {
     budget: 90,
     midrange: 160,
@@ -27,7 +36,8 @@ export const runBudgetAgent = async (
     state.itineraryDraft.length;
 
   const estimatedTotal =
-    (cheapestFlight ?? 0) +
+    selectedFlightPrice +
+    selectedReturnFlightPrice +
     lodgingEstimate +
     dailySpendEstimate;
 
@@ -59,6 +69,9 @@ export const runBudgetAgent = async (
           `budget=${state.userRequest.budget.toFixed(2)}`,
           `lodgingEstimate=${lodgingEstimate.toFixed(2)}`,
           `accommodationPreference=${accommodationPreference}`,
+          `selectedFlightOfferId=${recommendedFlight?.offerId ?? "none"}`,
+        `selectedReturnFlightOfferId=${recommendedReturnFlight?.offerId ?? "none"}`,
+        `flightCost=${(selectedFlightPrice + selectedReturnFlightPrice).toFixed(2)}`,
         ],
         outputSummary: withinBudget
           ? "Trip is currently budget-feasible"

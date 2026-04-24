@@ -11,7 +11,41 @@ export type PlannerNodeName =
   | "itinerary_agent"
   | "budget_agent"
   | "packing_agent"
-  | "plan_synthesizer";
+  | "plan_synthesizer"
+  | "requirement_parser"
+  | "form_completer";
+
+export const routeFromStart = (
+  state: PlannerState,
+): PlannerNodeName | typeof END => {
+  if (state.naturalLanguage && !state.parsedRequest) {
+    return "requirement_parser";
+  }
+
+  if (state.parsedRequest && !state.userRequest) {
+    return "form_completer";
+  }
+
+  if (state.userRequest) {
+    return "risk_guard";
+  }
+
+  return END;
+};
+
+export const routeFromFormCompleter = (
+  state: PlannerState,
+): PlannerNodeName | typeof END => {
+  if (state.pendingQuestions && state.pendingQuestions.length > 0) {
+    return END;
+  }
+
+  if (state.userRequest) {
+    return "risk_guard";
+  }
+
+  return END;
+};
 
 export const routeFromRiskGuard = (
   state: PlannerState,
@@ -64,6 +98,12 @@ export const routeFromSupervisor = (
   return END;
 };
 
+/**
+ * Supervisor node for state-driven routing.
+ *
+ * This node intentionally does not modify state; routing decisions are made
+ * solely by `routeFromSupervisor` based on the current PlannerState.
+ */
 export const runSupervisorNode = async (): Promise<Partial<PlannerState>> => {
   return {};
 };

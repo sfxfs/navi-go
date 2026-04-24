@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { requestJson } from "../common/http.js";
 import { validationToolError } from "../common/errors.js";
+import type { DailyWeather, WeatherRiskSummary } from "../../graph/state.js";
 
 export const WeatherSearchInputSchema = z.object({
   destination: z.string().min(2),
@@ -34,22 +35,6 @@ const ForecastResponseSchema = z.object({
 });
 
 export type WeatherSearchInput = z.input<typeof WeatherSearchInputSchema>;
-
-export type DailyWeather = {
-  date: string;
-  weatherCode: number;
-  temperatureMax: number;
-  temperatureMin: number;
-  precipitationProbabilityMax: number;
-  riskLevel: "LOW" | "MEDIUM" | "HIGH";
-};
-
-export type WeatherRiskSummary = {
-  location: string;
-  timezone: string | undefined;
-  daily: DailyWeather[];
-  highRiskDates: string[];
-};
 
 const severeWeatherCodes = new Set([65, 67, 75, 82, 86, 95, 96, 99]);
 

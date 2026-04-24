@@ -1,26 +1,20 @@
-/* global document, fetch, FormData, HTMLInputElement */
+/* global document, fetch */
 
-const planForm = document.querySelector("#plan-form");
-const stateForm = document.querySelector("#state-form");
-const submitButton = document.querySelector("#submit-button");
-const stateButton = document.querySelector("#state-button");
-const submitStatus = document.querySelector("#submit-status");
-const stateStatus = document.querySelector("#state-status");
+const chatMessages = document.querySelector("#chat-messages");
+const chatInput = document.querySelector("#chat-input");
+const chatSend = document.querySelector("#chat-send");
+const threadIdInput = document.querySelector("#threadId");
 const resultCard = document.querySelector("#result-card");
 const resultContent = document.querySelector("#result-content");
 
-const requiredElements = [
-  planForm,
-  stateForm,
-  submitButton,
-  stateButton,
-  submitStatus,
-  stateStatus,
-  resultCard,
-  resultContent,
-];
-
-if (requiredElements.some((element) => element == null)) {
+if (
+  !chatMessages ||
+  !chatInput ||
+  !chatSend ||
+  !threadIdInput ||
+  !resultCard ||
+  !resultContent
+) {
   throw new Error("Planner UI is missing required DOM elements.");
 }
 
@@ -32,32 +26,53 @@ const escapeHtml = (value) =>
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
 
-const setStatus = (element, message, isError = false) => {
-  element.textContent = message;
-  element.classList.toggle("error", isError);
+const appendMessage = (role, html) => {
+  const wrapper = document.createElement("div");
+  wrapper.className = `message ${role}`;
+  wrapper.innerHTML = html;
+  chatMessages.appendChild(wrapper);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
 };
 
-const parseInterests = (rawInterests) =>
-  rawInterests
-    .split(",")
-    .map((value) => value.trim())
-    .filter(Boolean);
-
-const nonEmpty = (value) => {
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
+const appendUserMessage = (text) => {
+  appendMessage("user", `<p>${escapeHtml(text)}</p>`);
 };
 
-const asUpperIata = (value) => {
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed.toUpperCase() : undefined;
+const appendAiMessage = (html) => {
+  appendMessage("ai", html);
+};
+
+const appendAiText = (text) => {
+  appendAiMessage(`<p>${escapeHtml(text)}</p>`);
+};
+
+const setLoading = (isLoading) => {
+  chatSend.disabled = isLoading;
+  chatInput.disabled = isLoading;
+  if (isLoading) {
+    chatSend.textContent = "…";
+  } else {
+    chatSend.textContent = "Send";
+  }
+};
+
+const parseResponseBody = async (response) => {
+  const contentType = response.headers.get("content-type") ?? "";
+  if (contentType.includes("application/json")) {
+    try {
+      return await response.json();
+    } catch {
+      return null;
+    }
+  }
+  const text = await response.text();
+  return text ? { message: text } : null;
 };
 
 const formatApiError = (payload, fallbackMessage) => {
   if (!payload || typeof payload !== "object") {
     return fallbackMessage;
   }
-
   if ("message" in payload && typeof payload.message === "string") {
     const provider =
       "provider" in payload && typeof payload.provider === "string"
@@ -67,10 +82,8 @@ const formatApiError = (payload, fallbackMessage) => {
       "error" in payload && typeof payload.error === "string"
         ? `${payload.error}: `
         : "";
-
     return `${errorCode}${payload.message}${provider}`;
   }
-
   return fallbackMessage;
 };
 
@@ -78,47 +91,93 @@ const createListMarkup = (items, emptyMessage = "None") => {
   if (!Array.isArray(items) || items.length === 0) {
     return `<p>${escapeHtml(emptyMessage)}</p>`;
   }
-
   return `<ul>${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`;
 };
 
-const renderDecisionLogMarkup = (decisionLog) => {
-  if (!Array.isArray(decisionLog) || decisionLog.length === 0) {
-    return "<p>No decision log entries.</p>";
+const renderSingleFlightMarkup = (flight, label) => {
+  if (!flight || typeof flight !== "object") {
+    return `<p><strong>${escapeHtml(label)}</strong>: No flight options available.</p>`;
   }
-
-  const items = decisionLog.map((entry) => {
-    const agent = escapeHtml(entry?.agent ?? "agent");
-    const summary = escapeHtml(entry?.outputSummary ?? "");
-    const evidence = Array.isArray(entry?.keyEvidence)
-      ? escapeHtml(entry.keyEvidence.join("; "))
-      : "";
-
-    return `<li><strong>${agent}</strong>: ${summary}<br /><small>${evidence}</small></li>`;
-  });
-
-  return `<ul>${items.join("")}</ul>`;
+  const route =
+    Array.isArray(flight.route) && flight.route.length > 0
+      ? flight.route.map((code) => escapeHtml(code)).join(" → ")
+      : "-";
+  const carriers =
+    Array.isArray(flight.carriers) && flight.carriers.length > 0
+      ? escapeHtml(flight.carriers.join(", "))
+      : "-";
+  return `
+    <p><strong>${escapeHtml(label)}</strong></p>
+    <p>
+      Offer ID: ${escapeHtml(flight.offerId ?? "-")}<br />
+      Total price: ${escapeHtml(flight.totalPrice ?? "-")}<br />
+      Currency: ${escapeHtml(flight.currency ?? "-")}<br />
+      Route: ${route}<br />
+      Departure: ${escapeHtml(flight.departureAt ?? "-")}<br />
+      Arrival: ${escapeHtml(flight.arrivalAt ?? "-")}<br />
+      Carriers: ${carriers}
+    </p>
+  `;
 };
 
-const toJsonPre = (value) => `<pre>${escapeHtml(JSON.stringify(value, null, 2))}</pre>`;
+const renderFlightMarkup = (finalPlan, flightOptions, returnFlightOptions) => {
+  const options = Array.isArray(flightOptions) ? flightOptions : [];
+  const returnOptions = Array.isArray(returnFlightOptions) ? returnFlightOptions : [];
 
-const renderFinalPlanMarkup = (finalPlan) => {
-  if (!finalPlan || typeof finalPlan !== "object") {
-    return "<p>Plan is not available yet for this thread.</p>";
+  const selectedOfferId =
+    typeof finalPlan?.selectedFlightOfferId === "string"
+      ? finalPlan.selectedFlightOfferId
+      : undefined;
+  const recommendedFlight =
+    (selectedOfferId
+      ? options.find((option) => option?.offerId === selectedOfferId)
+      : undefined) ?? options[0];
+
+  const selectedReturnOfferId =
+    typeof finalPlan?.selectedReturnFlightOfferId === "string"
+      ? finalPlan.selectedReturnFlightOfferId
+      : undefined;
+  const recommendedReturnFlight =
+    (selectedReturnOfferId
+      ? returnOptions.find((option) => option?.offerId === selectedReturnOfferId)
+      : undefined) ?? returnOptions[0];
+
+  let html = "";
+  if (recommendedFlight) {
+    html += renderSingleFlightMarkup(recommendedFlight, "Outbound flight");
   }
+  if (recommendedReturnFlight) {
+    html += renderSingleFlightMarkup(recommendedReturnFlight, "Return flight");
+  }
+  if (!html) {
+    return "<p>No flight options available.</p>";
+  }
+  return html;
+};
 
+const renderFinalPlanMarkup = (finalPlan, flightOptions, returnFlightOptions) => {
+  if (!finalPlan || typeof finalPlan !== "object") {
+    return "<p>Plan is not available yet.</p>";
+  }
   const itineraryItems = Array.isArray(finalPlan.itinerary)
     ? finalPlan.itinerary
         .map((day) => {
           const date = escapeHtml(day?.date ?? "");
           const theme = escapeHtml(day?.theme ?? "");
-          return `<li><strong>${date}</strong> — ${theme}</li>`;
+          const weatherNote = escapeHtml(day?.weatherNote ?? "No weather note.");
+          const activities = Array.isArray(day?.activities) ? day.activities : [];
+          return `
+            <li>
+              <p><strong>${date}</strong> — ${theme}</p>
+              <p><strong>Activities</strong></p>
+              ${createListMarkup(activities, "No activities listed.")}
+              <p><strong>Weather</strong>: ${weatherNote}</p>
+            </li>
+          `;
         })
         .join("")
     : "";
-
   const budget = finalPlan.budget ?? {};
-
   return `
     <div class="result-group">
       <h3>Summary</h3>
@@ -127,6 +186,10 @@ const renderFinalPlanMarkup = (finalPlan) => {
     <div class="result-group">
       <h3>Destination</h3>
       <p>${escapeHtml(finalPlan.selectedDestination ?? "(not selected)")}</p>
+    </div>
+    <div class="result-group">
+      <h3>Flights</h3>
+      ${renderFlightMarkup(finalPlan, flightOptions, returnFlightOptions)}
     </div>
     <div class="result-group">
       <h3>Itinerary</h3>
@@ -153,192 +216,144 @@ const renderFinalPlanMarkup = (finalPlan) => {
   `;
 };
 
-const renderPlanResponse = (responseBody) => {
-  resultContent.innerHTML = `
-    ${renderFinalPlanMarkup(responseBody.finalPlan)}
-    <div class="result-group">
-      <h3>Decision log</h3>
-      ${renderDecisionLogMarkup(responseBody.decisionLog)}
-    </div>
-    <details class="result-group">
-      <summary>Raw response</summary>
-      ${toJsonPre(responseBody)}
-    </details>
-  `;
+const showPlanResult = (body) => {
+  const values = body?.values ?? body ?? {};
+  resultContent.innerHTML = renderFinalPlanMarkup(
+    values.finalPlan ?? null,
+    values.flightOptions ?? [],
+    values.returnFlightOptions ?? [],
+  );
   resultCard.classList.remove("hidden");
 };
 
-const renderStateResponse = (responseBody) => {
-  const finalPlan = responseBody?.values?.finalPlan ?? null;
-  const safetyFlags = responseBody?.values?.safetyFlags ?? [];
 
-  resultContent.innerHTML = `
-    ${renderFinalPlanMarkup(finalPlan)}
-    <div class="result-group">
-      <h3>Safety flags (state)</h3>
-      ${createListMarkup(safetyFlags)}
-    </div>
-    <details class="result-group">
-      <summary>Raw state payload</summary>
-      ${toJsonPre(responseBody)}
-    </details>
-  `;
-  resultCard.classList.remove("hidden");
-};
 
-const readPlanPayload = () => {
-  const formData = new FormData(planForm);
+const handleChatResponse = async (body) => {
+  if (body?.status === "awaiting_input") {
+    const questions = body.pendingQuestions ?? [];
+    let html = "<p>Require more information of your trip: </p><div class=\"question-list\">";
+    questions.forEach((q, idx) => {
+      html += `
+        <div class="question-item" data-idx="${idx}">
+          <p class="question-text">${escapeHtml(q)}</p>
+          <input type="text" class="question-answer" placeholder="Your answer..." />
+        </div>
+      `;
+    });
+    html += "</div><button class=\"submit-answers\">Submit answers</button>";
+    appendAiMessage(html);
 
-  const threadId = String(formData.get("threadId") ?? "").trim();
-  const requestText = String(formData.get("requestText") ?? "").trim();
-  const travelStartDate = String(formData.get("travelStartDate") ?? "").trim();
-  const travelEndDate = String(formData.get("travelEndDate") ?? "").trim();
-  const budget = Number(formData.get("budget"));
+    const btn = chatMessages.querySelector(".submit-answers");
+    if (btn) {
+      btn.addEventListener("click", async () => {
+        const inputs = chatMessages.querySelectorAll(".question-answer");
+        const answers = {};
+        inputs.forEach((input, idx) => {
+          const keyMap = ["travelStartDate", "travelEndDate", "budget"];
+          const key = keyMap[idx] ?? `field_${idx}`;
+          let value = input.value.trim();
+          if (key === "budget") {
+            const num = Number.parseFloat(value);
+            value = Number.isFinite(num) ? num : value;
+          }
+          if (value) {
+            answers[key] = value;
+          }
+        });
 
-  const originIata = asUpperIata(String(formData.get("originIata") ?? ""));
-  const destinationHint = nonEmpty(String(formData.get("destinationHint") ?? ""));
-  const destinationCityCode = asUpperIata(
-    String(formData.get("destinationCityCode") ?? ""),
-  );
-  const destinationIata = asUpperIata(
-    String(formData.get("destinationIata") ?? ""),
-  );
-  const interests = parseInterests(String(formData.get("interests") ?? ""));
+        if (Object.keys(answers).length === 0) {
+          appendAiText("Please provide at least one answer.");
+          return;
+        }
 
-  return {
-    threadId,
-    scenario: "frontend",
-    userRequest: {
-      userId: "anonymous",
-      requestText,
-      travelStartDate,
-      travelEndDate,
-      budget,
-      adults: 1,
-      children: 0,
-      interests,
-      ...(originIata ? { originIata } : {}),
-      ...(destinationHint ? { destinationHint } : {}),
-      ...(destinationCityCode ? { destinationCityCode } : {}),
-      ...(destinationIata ? { destinationIata } : {}),
-    },
-  };
-};
+        appendUserMessage(Object.values(answers).join(", "));
+        setLoading(true);
 
-const parseResponseBody = async (response) => {
-  const contentType = response.headers.get("content-type") ?? "";
-
-  if (contentType.includes("application/json")) {
-    try {
-      return await response.json();
-    } catch {
-      return null;
+        try {
+          const threadId = threadIdInput.value.trim() || "chat-thread";
+          const response = await fetch("/plan/chat/resume", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              threadId,
+              scenario: "frontend-chat",
+              answers,
+            }),
+          });
+          const data = await parseResponseBody(response);
+          if (!response.ok) {
+            appendAiText(
+              formatApiError(data, `Request failed with status ${response.status}.`),
+            );
+            return;
+          }
+          await handleChatResponse(data);
+        } catch (err) {
+          appendAiText(err instanceof Error ? err.message : "Unexpected error.");
+        } finally {
+          setLoading(false);
+        }
+      });
     }
+    return;
   }
 
-  const text = await response.text();
-  return text ? { message: text } : null;
+  if (body?.status === "complete") {
+    appendAiText("🎉 Your travel plan is ready!");
+    showPlanResult(body);
+    return;
+  }
+
+  if (body?.status === "in_progress") {
+    appendAiText("Planning in progress... You can check back later with the same thread ID.");
+    return;
+  }
+
+  appendAiText("Received an unexpected response. Please try again.");
 };
 
-planForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
+const sendNaturalLanguage = async () => {
+  const text = chatInput.value.trim();
+  if (!text) return;
 
-  if (!planForm.reportValidity()) {
-    setStatus(submitStatus, "Please fill required fields.", true);
-    return;
-  }
-
-  const payload = readPlanPayload();
-  if (payload.userRequest.travelEndDate < payload.userRequest.travelStartDate) {
-    setStatus(submitStatus, "Travel end date must be on or after start date.", true);
-    return;
-  }
-
-  setStatus(submitStatus, "Submitting...");
-  submitButton.disabled = true;
+  appendUserMessage(text);
+  chatInput.value = "";
+  setLoading(true);
 
   try {
-    const response = await fetch("/plan", {
+    const threadId = threadIdInput.value.trim() || "chat-thread";
+    const response = await fetch("/plan/chat", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        threadId,
+        scenario: "frontend-chat",
+        naturalLanguage: text,
+      }),
     });
-
-    const body = await parseResponseBody(response);
+    const data = await parseResponseBody(response);
     if (!response.ok) {
-      setStatus(
-        submitStatus,
-        formatApiError(body, `Request failed with status ${response.status}.`),
-        true,
+      appendAiText(
+        formatApiError(data, `Request failed with status ${response.status}.`),
       );
       return;
     }
-
-    renderPlanResponse(body);
-
-    const threadIdInput = document.querySelector("#stateThreadId");
-    if (threadIdInput instanceof HTMLInputElement) {
-      threadIdInput.value = payload.threadId;
-    }
-
-    setStatus(submitStatus, `Plan created for thread ${payload.threadId}.`);
-    setStatus(stateStatus, "");
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unexpected error.";
-    setStatus(submitStatus, message, true);
+    await handleChatResponse(data);
+  } catch (err) {
+    appendAiText(err instanceof Error ? err.message : "Unexpected error.");
   } finally {
-    submitButton.disabled = false;
+    setLoading(false);
+  }
+};
+
+chatSend.addEventListener("click", sendNaturalLanguage);
+chatInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && !event.shiftKey) {
+    event.preventDefault();
+    sendNaturalLanguage();
   }
 });
 
-stateForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-
-  if (!stateForm.reportValidity()) {
-    setStatus(stateStatus, "Thread ID is required.", true);
-    return;
-  }
-
-  const formData = new FormData(stateForm);
-  const threadId = String(formData.get("stateThreadId") ?? "").trim();
-
-  setStatus(stateStatus, "Loading state...");
-  stateButton.disabled = true;
-
-  try {
-    const response = await fetch(`/plan/${encodeURIComponent(threadId)}`);
-    const body = await parseResponseBody(response);
-
-    if (!response.ok) {
-      setStatus(
-        stateStatus,
-        formatApiError(body, `Load failed with status ${response.status}.`),
-        true,
-      );
-      return;
-    }
-
-    renderStateResponse(body);
-
-    if (body?.values?.finalPlan == null) {
-      setStatus(stateStatus, "State loaded, but no final plan is available yet.", true);
-      return;
-    }
-
-    setStatus(stateStatus, `State loaded for thread ${threadId}.`);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unexpected error.";
-    setStatus(stateStatus, message, true);
-  } finally {
-    stateButton.disabled = false;
-  }
-});
-
-for (const inputId of ["originIata", "destinationCityCode", "destinationIata"]) {
-  const element = document.querySelector(`#${inputId}`);
-  if (element instanceof HTMLInputElement) {
-    element.addEventListener("blur", () => {
-      element.value = element.value.trim().toUpperCase();
-    });
-  }
-}
+appendAiText(
+  "Hello! I'm NaviGo, your travel planning assistant. Describe your trip and I'll help you plan it. For example: \"I want to visit Tokyo for 5 days with a budget of 2500 USD.\"",
+);

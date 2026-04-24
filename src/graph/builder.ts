@@ -8,6 +8,7 @@ import type { ChatOpenAI } from "@langchain/openai";
 
 import { runBudgetAgent } from "../agents/budget.agent.js";
 import { runDestinationAgent } from "../agents/destination.agent.js";
+import { runFormCompleter } from "../agents/form-completer.agent.js";
 import {
   runItineraryAgent,
   type ItineraryAgentDependencies,
@@ -15,11 +16,14 @@ import {
 import { runPackingAgent } from "../agents/packing.agent.js";
 import { runPlanSynthesizerAgent } from "../agents/plan-synthesizer.agent.js";
 import { runPreferenceAgent } from "../agents/preference.agent.js";
+import { runRequirementParser } from "../agents/requirement-parser.agent.js";
 import { runRiskGuardAgent } from "../agents/risk-guard.agent.js";
 import { createPlanningModel } from "../config/models.js";
 import { createPostgresCheckpointer } from "../persistence/checkpointer.js";
 import {
+  routeFromFormCompleter,
   routeFromRiskGuard,
+  routeFromStart,
   routeFromSupervisor,
   runSupervisorNode,
 } from "./routes.js";
@@ -48,7 +52,11 @@ export const buildPlannerGraph = async (
     .addNode("budget_agent", runBudgetAgent)
     .addNode("packing_agent", runPackingAgent)
     .addNode("plan_synthesizer", runPlanSynthesizerAgent)
-    .addEdge(START, "risk_guard")
+    .addNode("requirement_parser", (state) => runRequirementParser(state, { model }))
+    .addNode("form_completer", runFormCompleter)
+    .addConditionalEdges(START, routeFromStart)
+    .addEdge("requirement_parser", "form_completer")
+    .addConditionalEdges("form_completer", routeFromFormCompleter)
     .addConditionalEdges("risk_guard", routeFromRiskGuard)
     .addConditionalEdges("supervisor", routeFromSupervisor)
     .addEdge("preference_agent", "risk_guard")

@@ -20,6 +20,7 @@ const baseState = (): PlannerState => ({
   preferences: null,
   destinationCandidates: [],
   flightOptions: [],
+  returnFlightOptions: [],
   weatherRisks: null,
   itineraryDraft: [],
   budgetAssessment: null,
@@ -27,6 +28,9 @@ const baseState = (): PlannerState => ({
   safetyFlags: [],
   decisionLog: [],
   finalPlan: null,
+  naturalLanguage: null,
+  parsedRequest: null,
+  pendingQuestions: null,
 });
 
 describe("risk guard agent", () => {
@@ -37,7 +41,7 @@ describe("risk guard agent", () => {
 
     const update = await runRiskGuardAgent(state);
 
-    expect(update.safetyFlags).toContain("BLOCKED_PROMPT_INJECTION");
+    expect(update.safetyFlags?.some((flag) => flag.startsWith("BLOCKED_PROMPT_INJECTION"))).toBe(true);
     expect(update.decisionLog?.[0]?.riskFlags.length).toBeGreaterThan(0);
   });
 

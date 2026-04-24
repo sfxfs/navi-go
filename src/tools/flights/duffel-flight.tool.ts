@@ -3,6 +3,7 @@ import { z } from "zod";
 import { validationToolError } from "../common/errors.js";
 import { duffelPost } from "../common/duffel.js";
 import type { JsonObject } from "../common/http.js";
+import type { FlightOption } from "../../graph/state.js";
 
 export const FlightSearchInputSchema = z.object({
   originIata: z.string().regex(/^[A-Z]{3}$/),
@@ -41,17 +42,6 @@ const DuffelOfferRequestResponseSchema = z.object({
 });
 
 export type FlightSearchInput = z.input<typeof FlightSearchInputSchema>;
-
-export type FlightOption = {
-  offerId: string;
-  totalPrice: number;
-  currency: string;
-  seats: number | undefined;
-  route: string[];
-  departureAt: string;
-  arrivalAt: string;
-  carriers: string[];
-};
 
 const mapTravelClass = (
   value: FlightSearchInput["travelClass"],

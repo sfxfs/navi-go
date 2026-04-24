@@ -58,6 +58,7 @@ export const FinalPlanSchema = z.object({
   summary: z.string(),
   selectedDestination: z.string(),
   selectedFlightOfferId: z.string().optional(),
+  selectedReturnFlightOfferId: z.string().optional(),
   itinerary: z.array(ItineraryDaySchema),
   budget: BudgetAssessmentSchema,
   packingList: z.array(z.string()),
@@ -71,6 +72,10 @@ export type ItineraryDay = z.infer<typeof ItineraryDaySchema>;
 export type BudgetAssessment = z.infer<typeof BudgetAssessmentSchema>;
 export type DecisionLogEntry = z.infer<typeof DecisionLogEntrySchema>;
 export type FinalPlan = z.infer<typeof FinalPlanSchema>;
+
+export const ParsedRequestSchema = UserRequestSchema.partial();
+
+export type ParsedRequest = z.infer<typeof ParsedRequestSchema>;
 
 export type FlightOption = {
   offerId: string;
@@ -119,6 +124,10 @@ export const PlannerStateAnnotation = Annotation.Root({
     reducer: replaceReducer,
     default: () => [],
   }),
+  returnFlightOptions: Annotation<FlightOption[]>({
+    reducer: replaceReducer,
+    default: () => [],
+  }),
   weatherRisks: Annotation<WeatherRiskSummary | null>({
     reducer: replaceReducer,
     default: () => null,
@@ -144,6 +153,18 @@ export const PlannerStateAnnotation = Annotation.Root({
     default: () => [],
   }),
   finalPlan: Annotation<FinalPlan | null>({
+    reducer: replaceReducer,
+    default: () => null,
+  }),
+  naturalLanguage: Annotation<string | null>({
+    reducer: replaceReducer,
+    default: () => null,
+  }),
+  parsedRequest: Annotation<ParsedRequest | null>({
+    reducer: replaceReducer,
+    default: () => null,
+  }),
+  pendingQuestions: Annotation<string[] | null>({
     reducer: replaceReducer,
     default: () => null,
   }),

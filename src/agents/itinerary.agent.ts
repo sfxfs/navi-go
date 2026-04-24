@@ -1,12 +1,14 @@
+import { searchFlightOffers } from "../tools/flights/duffel-flight.tool.js";
+import { fetchWeatherRiskSummary } from "../tools/weather/openmeteo-weather.tool.js";
 import {
-  searchFlightOffers,
+  makeDecisionLog,
   type FlightOption,
-} from "../tools/flights/duffel-flight.tool.js";
-import {
-  fetchWeatherRiskSummary,
+  type ItineraryDay,
+  type PlannerState,
   type WeatherRiskSummary,
-} from "../tools/weather/openmeteo-weather.tool.js";
-import { makeDecisionLog, type ItineraryDay, type PlannerState } from "../graph/state.js";
+} from "../graph/state.js";
+import { PLACE_ANCHORS_BY_CITY_CODE } from "../data/place-anchors.js";
+import { getFlightCalendarDate, pickRecommendedFlightOption } from "./flight-option-selection.js";
 
 export type ItineraryAgentDependencies = {
   searchFlights: typeof searchFlightOffers;
@@ -16,89 +18,6 @@ export type ItineraryAgentDependencies = {
 const defaultDependencies: ItineraryAgentDependencies = {
   searchFlights: searchFlightOffers,
   fetchWeather: fetchWeatherRiskSummary,
-};
-
-const PLACE_ANCHORS_BY_CITY_CODE: Record<string, string[]> = {
-  BCN: [
-    "Sagrada Família",
-    "Gothic Quarter",
-    "Passeig de Gràcia",
-    "El Born",
-    "Montjuïc",
-    "Barceloneta",
-  ],
-  FLR: [
-    "Duomo di Firenze",
-    "Uffizi Gallery",
-    "Ponte Vecchio",
-    "Oltrarno",
-    "Piazzale Michelangelo",
-    "Santa Croce",
-  ],
-  IST: [
-    "Hagia Sophia",
-    "Sultanahmet Square",
-    "Grand Bazaar",
-    "Galata",
-    "Bosphorus Waterfront",
-    "Kadıköy Market",
-  ],
-  LON: [
-    "Westminster",
-    "South Bank",
-    "British Museum",
-    "Covent Garden",
-    "Notting Hill",
-    "Borough Market",
-  ],
-  MEX: [
-    "Zócalo",
-    "Chapultepec Park",
-    "Roma Norte",
-    "Coyoacán",
-    "Palacio de Bellas Artes",
-    "Mercado de San Juan",
-  ],
-  NYC: [
-    "Central Park",
-    "Metropolitan Museum of Art",
-    "Lower Manhattan",
-    "Brooklyn Bridge Park",
-    "Chelsea Market",
-    "SoHo",
-  ],
-  PAR: [
-    "Louvre Museum",
-    "Le Marais",
-    "Latin Quarter",
-    "Montmartre",
-    "Seine Riverside",
-    "Musée d'Orsay",
-  ],
-  ROM: [
-    "Colosseum",
-    "Roman Forum",
-    "Trastevere",
-    "Vatican Museums",
-    "Piazza Navona",
-    "Testaccio Market",
-  ],
-  SEL: [
-    "Gyeongbokgung Palace",
-    "Bukchon Hanok Village",
-    "Myeongdong",
-    "Hongdae",
-    "Insadong",
-    "Dongdaemun Design Plaza",
-  ],
-  TYO: [
-    "Asakusa",
-    "Ueno Park",
-    "Shibuya",
-    "Tsukiji Outer Market",
-    "Meiji Shrine",
-    "Ginza",
-  ],
 };
 
 const enumerateDates = (startDate: string, endDate: string): string[] => {
@@ -179,51 +98,137 @@ export const runItineraryAgent = async (
   if (!destination) {
     return {};
   }
+  const userRequest = state.userRequest;
 
-  const destinationIata = destination.iataCode ?? state.userRequest.destinationIata;
+  const destinationIata = destination.iataCode ?? userRequest.destinationIata;
 
   const flightOptions: FlightOption[] =
-    state.userRequest.originIata && destinationIata
+    userRequest.originIata && destinationIata
       ? await deps.searchFlights({
-          originIata: state.userRequest.originIata,
+          originIata: userRequest.originIata,
           destinationIata,
-          departureDate: state.userRequest.travelStartDate,
-          adults: state.userRequest.adults,
-          children: state.userRequest.children,
+          departureDate: userRequest.travelStartDate,
+          adults: userRequest.adults,
+          children: userRequest.children,
+        })
+      : [];
+
+  const returnFlightOptions: FlightOption[] =
+    userRequest.originIata && destinationIata
+      ? await deps.searchFlights({
+          originIata: destinationIata,
+          destinationIata: userRequest.originIata,
+          departureDate: userRequest.travelEndDate,
+          adults: userRequest.adults,
+          children: userRequest.children,
         })
       : [];
 
   const weatherRisks: WeatherRiskSummary = await deps.fetchWeather({
     destination: destination.name,
-    startDate: state.userRequest.travelStartDate,
-    endDate: state.userRequest.travelEndDate,
+    startDate: userRequest.travelStartDate,
+    endDate: userRequest.travelEndDate,
   });
 
   const interests =
     state.preferences?.prioritizedInterests.length
       ? state.preferences.prioritizedInterests
-      : state.userRequest.interests.length
-        ? state.userRequest.interests
+      : userRequest.interests.length
+        ? userRequest.interests
         : ["sightseeing"];
 
   const placeAnchors = buildPlaceAnchors(
     destination.name,
-    destination.cityCode ?? state.userRequest.destinationCityCode,
+    destination.cityCode ?? userRequest.destinationCityCode,
   );
 
+  const recommendedFlight = pickRecommendedFlightOption(
+    flightOptions,
+    userRequest.travelStartDate,
+  );
+  const arrivalDate = recommendedFlight
+    ? getFlightCalendarDate(recommendedFlight.arrivalAt)
+    : undefined;
+
+  const recommendedReturnFlight = pickRecommendedFlightOption(
+    returnFlightOptions,
+    userRequest.travelEndDate,
+  );
+  const returnDepartureDate = recommendedReturnFlight
+    ? getFlightCalendarDate(recommendedReturnFlight.departureAt)
+    : undefined;
+
+  let destinationDayNumber = 0;
+
   const itineraryDraft: ItineraryDay[] = enumerateDates(
-    state.userRequest.travelStartDate,
-    state.userRequest.travelEndDate,
-  ).map((date, index) => {
-    const interest = interests[index % interests.length] ?? "sightseeing";
+    userRequest.travelStartDate,
+    userRequest.travelEndDate,
+  ).map((date) => {
+    const isTransitDayBeforeArrival = arrivalDate !== undefined && date < arrivalDate;
+    if (isTransitDayBeforeArrival) {
+      const route =
+        recommendedFlight?.route.length
+          ? recommendedFlight.route.join(" → ")
+          : `${userRequest.originIata ?? "origin"} → ${destinationIata ?? destination.name}`;
+
+      return {
+        date,
+        theme: `Transit to ${destination.name}`,
+        activities: [
+          `Take flight ${recommendedFlight?.offerId ?? "(pending)"} on route ${route}`,
+          `Keep this day flexible for airport transfers and check-in`,
+          `Avoid fixed tours before arriving in ${destination.name}`,
+        ],
+        weatherNote: `Transit day; start destination activities after arrival on ${arrivalDate}.`,
+      };
+    }
+
+    destinationDayNumber += 1;
+    const interest = interests[(destinationDayNumber - 1) % interests.length] ?? "sightseeing";
     const dayWeather = weatherRisks.daily.find((item) => item.date === date);
     const highRisk = dayWeather?.riskLevel === "HIGH";
     const primaryAnchor =
-      placeAnchors[index % placeAnchors.length] ?? `${destination.name} Historic Center`;
+      placeAnchors[(destinationDayNumber - 1) % placeAnchors.length] ??
+      `${destination.name} Historic Center`;
     const secondaryAnchor =
-      placeAnchors[(index + 2) % placeAnchors.length] ?? `${destination.name} Museum Quarter`;
+      placeAnchors[(destinationDayNumber + 1) % placeAnchors.length] ??
+      `${destination.name} Museum Quarter`;
     const eveningAnchor =
-      placeAnchors[(index + 4) % placeAnchors.length] ?? `${destination.name} Food Street`;
+      placeAnchors[(destinationDayNumber + 3) % placeAnchors.length] ??
+      `${destination.name} Food Street`;
+    const isArrivalDay = arrivalDate !== undefined && date === arrivalDate;
+    const isDepartureDay = returnDepartureDate !== undefined && date === returnDepartureDate;
+
+    if (isArrivalDay) {
+      return {
+        date,
+        theme: `Arrival in ${destination.name}`,
+        activities: [
+          `Day ${destinationDayNumber}: Arrive via flight ${recommendedFlight?.offerId ?? "(pending)"}`,
+          `Complete immigration, transfer, and hotel check-in`,
+          `Take a light evening walk near ${eveningAnchor}`,
+        ],
+        weatherNote: `Arrival day; keep plans light before full exploration starts.`,
+      };
+    }
+
+    if (isDepartureDay) {
+      const returnRoute =
+        recommendedReturnFlight?.route.length
+          ? recommendedReturnFlight.route.join(" → ")
+          : `${destinationIata ?? destination.name} → ${userRequest.originIata ?? "origin"}`;
+
+      return {
+        date,
+        theme: `Departure from ${destination.name}`,
+        activities: [
+          `Day ${destinationDayNumber}: Check-out and transfer to airport`,
+          `Take return flight ${recommendedReturnFlight?.offerId ?? "(pending)"} on route ${returnRoute}`,
+          `Arrive home; end of trip`,
+        ],
+        weatherNote: `Departure day; keep luggage packed and allow buffer time for airport transfer.`,
+      };
+    }
 
     return {
       date,
@@ -234,7 +239,7 @@ export const runItineraryAgent = async (
         primaryAnchor,
         secondaryAnchor,
         eveningAnchor,
-        dayNumber: index + 1,
+        dayNumber: destinationDayNumber,
       }),
       weatherNote: highRisk
         ? `Weather risk is high for ${date}; prioritize indoor venues around ${primaryAnchor}`
@@ -244,18 +249,20 @@ export const runItineraryAgent = async (
 
   return {
     flightOptions,
+    returnFlightOptions,
     weatherRisks,
     itineraryDraft,
     decisionLog: [
       makeDecisionLog({
         agent: "itinerary_agent",
-        inputSummary: "Fetched flights/weather and drafted daily itinerary",
+        inputSummary: "Fetched outbound/return flights and drafted daily itinerary",
         keyEvidence: [
-          `flights=${flightOptions.length}`,
+          `outboundFlights=${flightOptions.length}`,
+          `returnFlights=${returnFlightOptions.length}`,
           `highRiskDays=${weatherRisks.highRiskDates.length}`,
           `placeAnchors=${placeAnchors.length}`,
         ],
-        outputSummary: `Generated ${itineraryDraft.length}-day itinerary`,
+        outputSummary: `Generated ${itineraryDraft.length}-day itinerary with return flight`,
         riskFlags:
           weatherRisks.highRiskDates.length > 0
             ? ["WEATHER_HIGH_RISK"]

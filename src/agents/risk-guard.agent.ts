@@ -16,7 +16,7 @@ export const runRiskGuardAgent = async (
     : [];
 
   const riskFlags = [
-    ...injectionFlags.map(() => blockedFlag),
+    ...injectionFlags.map((flag) => `${blockedFlag}:${flag}`),
     ...outputFlags,
   ];
 
