@@ -1,0 +1,176 @@
+name: LLMSecOps
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: "24"
+
+jobs:
+  ai-sast:
+    name: AI SAST — static analysis for LLM code risks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: AI code security scan (Semgrep)
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: >-
+            p/javascript
+            p/typescript
+            p/owasp-top-ten
+            p/cwe-top-25
+            p/ci
+            p/secrets
+            p/supply-chain
+            p/insecure-transport
+            p/xss
+            p/sql-injection
+
+      - name: Prompt security static analysis
+        run: npx tsx scripts/prompt-security-scan.ts
+
+  ai-supply-chain:
+    name: AI Supply Chain Security
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Dependency vulnerability audit (production)
+        run: npm audit --audit-level=moderate --omit=dev
+
+      - name: AI dependency security scan
+        run: npx tsx scripts/ai-dependency-scan.ts
+
+      - name: Check for known compromised AI packages
+        run: |
+          # Blocklist of known compromised or deprecated AI/ML packages
+          COMPROMISED_PACKAGES=(
+            "colors"
+            "faker"
+            "node-ipc"
+            "peacenotwar"
+          )
+          for pkg in "${COMPROMISED_PACKAGES[@]}"; do
+            if grep -q "\"$pkg\"" package-lock.json 2>/dev/null; then
+              echo "❌ Blocklisted package detected: $pkg"
+              exit 1
+            fi
+          done
+          echo "✅ No blocklisted packages found"
+
+  llm-redteam:
+    name: LLM Red Team — adversarial testing
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [ai-sast, ai-supply-chain]
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run guardrails red-team tests
+        run: npm run test:unit -- tests/unit/security/guardrails.test.ts
+
+      - name: Run adversarial prompt tests (OpenAI)
+        if: ${{ env.OPENAI_API_KEY != '' }}
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: gpt-4o-mini
+        run: npx vitest run tests/redteam/
+
+      - name: Skip red-team notice
+        if: ${{ env.OPENAI_API_KEY == '' }}
+        run: echo "⚠️ OPENAI_API_KEY not configured; skipping live adversarial tests"
+
+  model-config-audit:
+    name: Model configuration security audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Audit model configuration
+        run: npx tsx scripts/model-config-audit.ts
+
+      - name: Check for hardcoded AI API keys in source
+        run: |
+          # Scan for hardcoded OpenAI/Duffel keys (excluding tests and examples)
+          PATTERNS=(
+            "sk-[a-zA-Z0-9]{20,}"
+            "sk-proj-[a-zA-Z0-9_-]{20,}"
+            "duffel_test_[a-zA-Z0-9]{20,}"
+            "duffel_live_[a-zA-Z0-9]{20,}"
+          )
+          FOUND=0
+          for pattern in "${PATTERNS[@]}"; do
+            if grep -rEn "$pattern" src/ scripts/ --include="*.ts" --include="*.js" 2>/dev/null; then
+              FOUND=1
+            fi
+          done
+          if [ "$FOUND" -eq 1 ]; then
+            echo "❌ Potential hardcoded API key detected in source code"
+            exit 1
+          fi
+          echo "✅ No hardcoded API keys found in source"
