@@ -84,7 +84,3 @@ export const pickRecommendedFlightOption = (
     compareFlightOptions(left, right, travelStartDate),
   )[0];
 };
-
-export const getFlightCalendarDate = (timestamp: string): string | undefined => {
-  return toIsoCalendarDate(timestamp);
-};

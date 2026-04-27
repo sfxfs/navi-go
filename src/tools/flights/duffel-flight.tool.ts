@@ -43,23 +43,17 @@ const DuffelOfferRequestResponseSchema = z.object({
 
 export type FlightSearchInput = z.input<typeof FlightSearchInputSchema>;
 
+const CABIN_CLASS_MAP: Record<string, string> = {
+  ECONOMY: "economy",
+  PREMIUM_ECONOMY: "premium_economy",
+  BUSINESS: "business",
+  FIRST: "first",
+};
+
 const mapTravelClass = (
   value: FlightSearchInput["travelClass"],
-): "economy" | "premium_economy" | "business" | "first" | undefined => {
-  if (!value) {
-    return undefined;
-  }
-
-  switch (value) {
-    case "ECONOMY":
-      return "economy";
-    case "PREMIUM_ECONOMY":
-      return "premium_economy";
-    case "BUSINESS":
-      return "business";
-    case "FIRST":
-      return "first";
-  }
+): string | undefined => {
+  return value ? CABIN_CLASS_MAP[value] : undefined;
 };
 
 const makePassengers = (adults: number, children: number): Array<{ type: "adult" | "child" }> => {

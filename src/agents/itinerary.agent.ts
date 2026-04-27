@@ -9,6 +9,7 @@ import {
   type PlannerState,
 } from "../graph/state.js";
 import { pickRecommendedFlightOption } from "./flight-option-selection.js";
+import { PLACE_ANCHORS_BY_CITY_CODE } from "../data/place-anchors.js";
 
 export type ItineraryAgentDependencies = {
   model: ChatOpenAI;
@@ -87,10 +88,16 @@ export const runItineraryAgent = async (
         ? userRequest.interests
         : ["sightseeing"];
 
+  const cityCode = destination.cityCode ?? userRequest.destinationCityCode;
+  const anchorPlaces = cityCode ? PLACE_ANCHORS_BY_CITY_CODE[cityCode] : null;
+  const anchorHint = anchorPlaces
+    ? `\nKnown places of interest in ${destination.name} you should incorporate: ${anchorPlaces.join(", ")}.`
+    : "";
+
   const generated = await structuredModel.invoke(`
 You are a travel itinerary planner. Create a detailed day-by-day itinerary based on the following data.
 
-Destination: ${destination.name} (${destination.country})
+Destination: ${destination.name} (${destination.country})${anchorHint}
 Travel dates: ${userRequest.travelStartDate} to ${userRequest.travelEndDate}
 Travelers: ${userRequest.adults} adults, ${userRequest.children} children
 Budget: ${userRequest.budget}

@@ -43,18 +43,15 @@ Preferred destination hint: ${state.userRequest.destinationHint ?? "none"}
 Return valid city and airport codes where possible.
 `);
 
-  const fallbackCandidate =
-    state.userRequest.destinationHint &&
-    state.userRequest.destinationCityCode &&
-    state.userRequest.destinationIata
-      ? {
-          name: state.userRequest.destinationHint,
-          country: "Unknown",
-          iataCode: state.userRequest.destinationIata,
-          cityCode: state.userRequest.destinationCityCode,
-          rationale: "Provided by user explicitly",
-        }
-      : null;
+  const fallbackCandidate = state.userRequest.destinationHint
+    ? {
+        name: state.userRequest.destinationHint,
+        country: "Unknown",
+        iataCode: state.userRequest.destinationIata ?? null,
+        cityCode: state.userRequest.destinationCityCode ?? null,
+        rationale: "Provided by user explicitly",
+      }
+    : null;
 
   const candidates = generated.candidates;
   const withFallback =

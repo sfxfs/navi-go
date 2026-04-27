@@ -104,6 +104,4 @@ export const routeFromSupervisor = (
  * This node intentionally does not modify state; routing decisions are made
  * solely by `routeFromSupervisor` based on the current PlannerState.
  */
-export const runSupervisorNode = async (): Promise<Partial<PlannerState>> => {
-  return {};
-};
+export const runSupervisorNode = (): Partial<PlannerState> => ({});

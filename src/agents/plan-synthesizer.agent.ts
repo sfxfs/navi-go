@@ -5,6 +5,7 @@ import { detectUnsafeOutput } from "../security/guardrails.js";
 import {
   FinalPlanSchema,
   makeDecisionLog,
+  type FinalPlan,
   type PlannerState,
 } from "../graph/state.js";
 
@@ -16,6 +17,29 @@ const PlanSynthesisSchema = z.object({
   summary: z.string(),
   safetyFlags: z.array(z.string()),
 });
+
+const buildFinalPlan = (params: {
+  summary: string;
+  selectedDestination: string;
+  selectedFlightOfferId: string | undefined;
+  selectedReturnFlightOfferId: string | undefined;
+  state: PlannerState;
+  newSafetyFlags: string[];
+}): FinalPlan => {
+  const mergedSafetyFlags = [
+    ...new Set([...params.state.safetyFlags, ...params.newSafetyFlags]),
+  ];
+  return FinalPlanSchema.parse({
+    summary: params.summary,
+    selectedDestination: params.selectedDestination,
+    selectedFlightOfferId: params.selectedFlightOfferId,
+    selectedReturnFlightOfferId: params.selectedReturnFlightOfferId,
+    itinerary: params.state.itineraryDraft,
+    budget: params.state.budgetAssessment!,
+    packingList: params.state.packingList,
+    safetyFlags: mergedSafetyFlags,
+  });
+};
 
 export const runPlanSynthesizerAgent = async (
   state: PlannerState,
@@ -36,23 +60,18 @@ export const runPlanSynthesizerAgent = async (
     const summary =
       "Request blocked by risk guard due to prompt-injection patterns. No unsafe planning output generated.";
     const unsafeOutputFlags = detectUnsafeOutput(summary);
-    const mergedSafetyFlags = [
-      ...new Set([...state.safetyFlags, ...unsafeOutputFlags]),
-    ];
-    const finalPlan = FinalPlanSchema.parse({
+    const finalPlan = buildFinalPlan({
       summary,
       selectedDestination,
       selectedFlightOfferId,
       selectedReturnFlightOfferId,
-      itinerary: state.itineraryDraft,
-      budget: state.budgetAssessment,
-      packingList: state.packingList,
-      safetyFlags: mergedSafetyFlags,
+      state,
+      newSafetyFlags: unsafeOutputFlags,
     });
 
     return {
       finalPlan,
-      safetyFlags: mergedSafetyFlags,
+      safetyFlags: unsafeOutputFlags,
       decisionLog: [
         makeDecisionLog({
           agent: "plan_synthesizer",
@@ -88,24 +107,22 @@ Return a summary (2-3 sentences) and any additional safety flags you detect.
 `);
 
   const unsafeOutputFlags = detectUnsafeOutput(generated.summary);
-  const mergedSafetyFlags = [
-    ...new Set([...state.safetyFlags, ...generated.safetyFlags, ...unsafeOutputFlags]),
+  const newSafetyFlags = [
+    ...new Set([...generated.safetyFlags, ...unsafeOutputFlags]),
   ];
 
-  const finalPlan = FinalPlanSchema.parse({
+  const finalPlan = buildFinalPlan({
     summary: generated.summary,
     selectedDestination,
     selectedFlightOfferId,
     selectedReturnFlightOfferId,
-    itinerary: state.itineraryDraft,
-    budget: state.budgetAssessment,
-    packingList: state.packingList,
-    safetyFlags: mergedSafetyFlags,
+    state,
+    newSafetyFlags,
   });
 
   return {
     finalPlan,
-    safetyFlags: [...new Set([...generated.safetyFlags, ...unsafeOutputFlags])],
+    safetyFlags: newSafetyFlags,
     decisionLog: [
       makeDecisionLog({
         agent: "plan_synthesizer",

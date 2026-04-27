@@ -46,18 +46,15 @@ Return safetyFlags (array of short flag strings) and blocked (true if the reques
     ? detectUnsafeOutput(state.finalPlan.summary)
     : [];
 
-  const llmFlags = generated.safetyFlags.map((flag) =>
-    flag.startsWith(blockedFlag) ? flag : `${blockedFlag}:${flag}`,
-  );
+  const llmFlags = generated.safetyFlags;
 
   const riskFlags = [
     ...new Set([
       ...injectionFlags.map((flag) => `${blockedFlag}:${flag}`),
       ...outputFlags,
-      ...llmFlags,
-      ...(generated.blocked && !llmFlags.some((f) => f.startsWith(blockedFlag))
-        ? [`${blockedFlag}:LLM_BLOCKED`]
-        : []),
+      ...(generated.blocked
+        ? [`${blockedFlag}:LLM_BLOCKED`, ...llmFlags.map((f) => `LLM_FLAG:${f}`)]
+        : llmFlags.map((f) => `LLM_FLAG:${f}`)),
     ]),
   ];
 

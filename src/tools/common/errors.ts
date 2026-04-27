@@ -62,10 +62,19 @@ export const mapHttpFailureToToolError = (params: {
     });
   }
 
+  if (params.status !== undefined) {
+    return new ToolError({
+      provider: params.provider,
+      code: "UPSTREAM_BAD_RESPONSE",
+      status: params.status,
+      message: params.message,
+      cause: params.cause,
+    });
+  }
+
   return new ToolError({
     provider: params.provider,
-    code: params.status !== undefined ? "UPSTREAM_BAD_RESPONSE" : "NETWORK_ERROR",
-    ...(params.status !== undefined ? { status: params.status } : {}),
+    code: "NETWORK_ERROR",
     message: params.message,
     cause: params.cause,
   });

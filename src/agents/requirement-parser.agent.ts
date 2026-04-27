@@ -46,7 +46,7 @@ You are a travel planning assistant. Extract structured trip requirements from t
 User request: ${JSON.stringify(state.naturalLanguage)}
 
 Extract all fields you can identify. If a field is not mentioned, omit it.
-- Dates must be in YYYY-MM-DD format.
+- Dates must be in YYYY-MM-DD format (e.g. 2026-07-01).
 - Budget should be a number (local currency, assume the user means the numeric amount).
 - IATA codes are 3-letter uppercase airport codes.
 - Interests should be an array of short keywords like ["food", "museums", "hiking"].

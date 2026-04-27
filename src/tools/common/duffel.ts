@@ -23,6 +23,5 @@ export const duffelPost = async <TResponse>(params: {
       authorization: `Bearer ${token}`,
       "duffel-version": defaultDuffelVersion,
     },
-    retries: 2,
   });
 };

@@ -151,12 +151,6 @@ export const registerPlanRoutes = (
         {
           parsedRequest: merged,
           pendingQuestions: [],
-          finalPlan: null,
-          itineraryDraft: [],
-          budgetAssessment: null,
-          packingList: [],
-          selectedFlightOfferId: null,
-          selectedReturnFlightOfferId: null,
         },
         {
           configurable: { thread_id: payload.threadId },
