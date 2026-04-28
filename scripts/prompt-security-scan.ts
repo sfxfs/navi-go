@@ -109,8 +109,8 @@ const RULES = [
       }
 
       // Check if this invoke() is on a model created via withStructuredOutput
-      // Look back 15 lines for withStructuredOutput assignment
-      const start = Math.max(0, idx - 15);
+      // Look back 30 lines for withStructuredOutput assignment
+      const start = Math.max(0, idx - 30);
       const backContext = lines.slice(start, idx).join("\n");
       if (backContext.includes("withStructuredOutput")) {
         return false;
