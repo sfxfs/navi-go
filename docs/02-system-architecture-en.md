@@ -111,7 +111,7 @@ const graphBuilder = new StateGraph(PlannerStateAnnotation)
   .addEdge("plan_synthesizer", END);
 ```
 
-Every agent edge loops back through `risk_guard`, ensuring continuous safety scanning throughout the planning lifecycle.
+Every agent edge loops back through `risk_guard`, ensuring continuous safety scanning throughout the planning lifecycle. To reduce latency and cost, the risk guard skips the LLM scan on subsequent invocations when safety flags already exist from a previous run in the same plan cycle — only cheap rule-based checks are re-run.
 
 ## 2.4 Routing Logic
 
@@ -186,9 +186,9 @@ Implemented in `src/interfaces/api/server.ts` and `src/interfaces/api/routes/pla
 | `/plan/chat` | `POST` | Submit natural-language request; may return `pendingQuestions` |
 | `/plan/chat/resume` | `POST` | Answer pending clarifying questions and continue planning |
 | `/plan/:threadId` | `GET` | Retrieve checkpointed state by thread |
-| `/health` | `GET` | Health check |
+| `/health` | `GET` | Health check (returns `status`, `db`, `uptime`) |
 
-The POST handlers validate payloads with Zod, catch `ToolError` and map it to `502 Bad Gateway`, and return `finalPlan`, `safetyFlags`, and `decisionLog`.
+The POST handlers validate payloads with Zod, catch `ToolError` and map it to `502 Bad Gateway`, and return `finalPlan`, `safetyFlags`, and `decisionLog`. The `/plan/chat/resume` endpoint validates the merged parsed-request payload with `safeParse` to prevent injecting invalid fields on resume.
 
 ### CLI Runner
 
@@ -205,7 +205,7 @@ Prints final plan as formatted JSON to stdout.
 All external API calls go through `requestJson()` in `src/tools/common/http.ts`, which provides:
 
 - **Timeout**: 15s default with `AbortController`
-- **Retry**: 2 retries with exponential backoff (150ms × attempt)
+- **Retry**: 2 retries with exponential backoff and jitter (`150ms × 2^attempt × random(0.85, 1.15)`)
 - **Typed errors**: `ToolError` with codes (`AUTH_ERROR`, `RATE_LIMIT`, `UPSTREAM_TIMEOUT`, `UPSTREAM_BAD_RESPONSE`, `NETWORK_ERROR`, `VALIDATION_ERROR`)
 
 ### Schema Validation

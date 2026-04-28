@@ -125,7 +125,7 @@ This risk register is compiled from the current repository implementation and CI
 - Duffel, Open-Meteo network jitter or rate limiting
 
 **Existing Controls**
-- `requestJson(...)` unified timeout, retry, and AbortController.
+- `requestJson(...)` unified timeout, exponential backoff retry with jitter, and AbortController.
 - HTTP failures mapped to `ToolError` categories.
 - API layer returns 502 for `ToolError`, avoiding silent swallowing.
 - Fastify rate limit (100 req/min) mitigates abuse.

@@ -23,11 +23,20 @@ export const runRiskGuardAgent = async (
     return {};
   }
 
-  const structuredModel = deps.model.withStructuredOutput(RiskGuardSchema, {
-    name: "RiskGuardScan",
-  });
+  // Skip redundant LLM scans when safety flags already exist from a previous
+  // risk_guard run in the same plan cycle — the user request hasn't changed.
+  // Rule-based checks (injection/output patterns) are still cheap to re-run.
+  const hasExistingFlags = state.safetyFlags.length > 0;
 
-  const generated = await structuredModel.invoke(`
+  let llmFlags: string[] = [];
+  let llmBlocked = false;
+
+  if (!hasExistingFlags) {
+    const structuredModel = deps.model.withStructuredOutput(RiskGuardSchema, {
+      name: "RiskGuardScan",
+    });
+
+    const generated = await structuredModel.invoke(`
 You are a security scanner for a travel planning assistant. Analyze the following request and plan output for safety risks.
 
 User request: ${JSON.stringify(state.userRequest.requestText)}
@@ -41,18 +50,20 @@ Look for:
 Return safetyFlags (array of short flag strings) and blocked (true if the request should be blocked).
 `);
 
+    llmFlags = generated.safetyFlags;
+    llmBlocked = generated.blocked;
+  }
+
   const injectionFlags = detectPromptInjection(state.userRequest.requestText);
   const outputFlags = state.finalPlan
     ? detectUnsafeOutput(state.finalPlan.summary)
     : [];
 
-  const llmFlags = generated.safetyFlags;
-
   const riskFlags = [
     ...new Set([
       ...injectionFlags.map((flag) => `${blockedFlag}:${flag}`),
       ...outputFlags,
-      ...(generated.blocked
+      ...(llmBlocked
         ? [`${blockedFlag}:LLM_BLOCKED`, ...llmFlags.map((f) => `LLM_FLAG:${f}`)]
         : llmFlags.map((f) => `LLM_FLAG:${f}`)),
     ]),
@@ -63,8 +74,12 @@ Return safetyFlags (array of short flag strings) and blocked (true if the reques
       decisionLog: [
         makeDecisionLog({
           agent: "risk_guard",
-          inputSummary: "Scanned latest request and outputs via LLM + rules",
-          keyEvidence: ["No injection pattern matched", "No unsafe output matched", "LLM scan clean"],
+          inputSummary: hasExistingFlags
+            ? "Skipped LLM scan (flags already present); rule-based checks clean"
+            : "Scanned latest request and outputs via LLM + rules",
+          keyEvidence: hasExistingFlags
+            ? ["Reusing existing safety flags -- request unchanged"]
+            : ["No injection pattern matched", "No unsafe output matched", "LLM scan clean"],
           outputSummary: "No risk flags raised",
           riskFlags: [],
         }),
@@ -77,11 +92,13 @@ Return safetyFlags (array of short flag strings) and blocked (true if the reques
     decisionLog: [
       makeDecisionLog({
         agent: "risk_guard",
-        inputSummary: "Scanned latest request and outputs via LLM + rules",
+        inputSummary: hasExistingFlags
+          ? "Skipped LLM scan (flags already present); rule-based checks re-run"
+          : "Scanned latest request and outputs via LLM + rules",
         keyEvidence: [
           ...injectionFlags,
           ...outputFlags,
-          ...generated.safetyFlags,
+          ...(hasExistingFlags ? [] : llmFlags),
         ],
         outputSummary: "Raised risk flags for supervisor",
         riskFlags,

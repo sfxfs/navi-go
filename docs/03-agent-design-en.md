@@ -79,8 +79,8 @@ Input:  state.userRequest.requestText, state.finalPlan
 Output: safetyFlags, decisionLog
 ```
 
-- **LLM scan**: Uses `model.withStructuredOutput(RiskGuardSchema)` to semantically detect prompt injection attempts and unsafe output patterns.
-- **Rule scan**: `detectPromptInjection(...)` (`src/security/guardrails.ts`) applies regex patterns with zero-width character and homoglyph normalization.
+- **LLM scan**: Uses `model.withStructuredOutput(RiskGuardSchema)` to semantically detect prompt injection attempts and unsafe output patterns. **Optimization**: The LLM scan is skipped on subsequent invocations within the same plan cycle if safety flags already exist from a previous risk-guard run — this avoids redundant LLM calls (~1-2s each) since the user request hasn't changed.
+- **Rule scan**: `detectPromptInjection(...)` (`src/security/guardrails.ts`) applies regex patterns with zero-width character and homoglyph normalization. Rule-based checks always run (cheap).
 - **Output scan**: If `finalPlan` exists, runs `detectUnsafeOutput(...)` on the summary.
 - Flags are prefixed with `BLOCKED_PROMPT_INJECTION:` or `UNSAFE_OUTPUT:`.
 - The router (`routeFromRiskGuard`) routes blocked requests directly to the plan synthesizer for a safe refusal.
@@ -164,7 +164,7 @@ If `originIata` and destination IATA are available, calls `searchFlightOffers()`
 - **Outbound**: origin → destination on `travelStartDate`
 - **Return**: destination → origin on `travelEndDate`
 
-Flight options are sorted by `pickRecommendedFlightOption()` (`src/agents/flight-option-selection.ts`), which prefers flights arriving on or before the travel start date, then by earlier arrival, lower price, and earlier departure.
+Flight options are ranked by `pickRecommendedFlightOption()` (`src/agents/flight-option-selection.ts`) using an O(n) min-find reduce, preferring flights arriving on or before the travel start date, then by earlier arrival, lower price, and earlier departure.
 
 ### Weather Risk Assessment
 
@@ -256,7 +256,7 @@ Uses `model.withStructuredOutput(PlanSynthesisSchema)` to generate:
 - **Summary**: Human-readable trip overview with destination, days, and budget status
 - **Safety flags**: Any additional flags detected by the LLM
 
-Then assembles the final artifact:
+Then assembles the final artifact via `buildFinalPlan()` which accepts individual state fields (`itineraryDraft`, `budgetAssessment`, `packingList`, `existingSafetyFlags`) instead of the full state object, avoiding non-null assertions:
 - **Selected Destination**: First candidate from `destinationCandidates`
 - **Selected Flight**: `selectedFlightOfferId` and `selectedReturnFlightOfferId` (if available)
 - **Itinerary**: Full `itineraryDraft`

@@ -5,6 +5,7 @@ import { detectUnsafeOutput } from "../security/guardrails.js";
 import {
   FinalPlanSchema,
   makeDecisionLog,
+  type BudgetAssessment,
   type FinalPlan,
   type PlannerState,
 } from "../graph/state.js";
@@ -23,20 +24,23 @@ const buildFinalPlan = (params: {
   selectedDestination: string;
   selectedFlightOfferId: string | undefined;
   selectedReturnFlightOfferId: string | undefined;
-  state: PlannerState;
+  itineraryDraft: PlannerState["itineraryDraft"];
+  budgetAssessment: BudgetAssessment;
+  packingList: PlannerState["packingList"];
+  existingSafetyFlags: string[];
   newSafetyFlags: string[];
 }): FinalPlan => {
   const mergedSafetyFlags = [
-    ...new Set([...params.state.safetyFlags, ...params.newSafetyFlags]),
+    ...new Set([...params.existingSafetyFlags, ...params.newSafetyFlags]),
   ];
   return FinalPlanSchema.parse({
     summary: params.summary,
     selectedDestination: params.selectedDestination,
     selectedFlightOfferId: params.selectedFlightOfferId,
     selectedReturnFlightOfferId: params.selectedReturnFlightOfferId,
-    itinerary: params.state.itineraryDraft,
-    budget: params.state.budgetAssessment!,
-    packingList: params.state.packingList,
+    itinerary: params.itineraryDraft,
+    budget: params.budgetAssessment,
+    packingList: params.packingList,
     safetyFlags: mergedSafetyFlags,
   });
 };
@@ -65,7 +69,10 @@ export const runPlanSynthesizerAgent = async (
       selectedDestination,
       selectedFlightOfferId,
       selectedReturnFlightOfferId,
-      state,
+      itineraryDraft: state.itineraryDraft,
+      budgetAssessment: state.budgetAssessment,
+      packingList: state.packingList,
+      existingSafetyFlags: state.safetyFlags,
       newSafetyFlags: unsafeOutputFlags,
     });
 
@@ -116,7 +123,10 @@ Return a summary (2-3 sentences) and any additional safety flags you detect.
     selectedDestination,
     selectedFlightOfferId,
     selectedReturnFlightOfferId,
-    state,
+    itineraryDraft: state.itineraryDraft,
+    budgetAssessment: state.budgetAssessment,
+    packingList: state.packingList,
+    existingSafetyFlags: state.safetyFlags,
     newSafetyFlags,
   });
 

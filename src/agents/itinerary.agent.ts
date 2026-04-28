@@ -42,20 +42,23 @@ export const runItineraryAgent = async (
 
   const destinationIata = destination.iataCode ?? userRequest.destinationIata;
 
-  const [flightOptions, returnFlightOptions, weatherRisks] = await Promise.all([
-    userRequest.originIata && destinationIata
+  const shouldSearchFlights = Boolean(userRequest.originIata && destinationIata);
+  const originIata = userRequest.originIata!;
+
+  const [outboundResult, returnResult, weatherResult] = await Promise.allSettled([
+    shouldSearchFlights
       ? deps.searchFlights({
-          originIata: userRequest.originIata,
-          destinationIata,
+          originIata,
+          destinationIata: destinationIata!,
           departureDate: userRequest.travelStartDate,
           adults: userRequest.adults,
           children: userRequest.children,
         })
       : Promise.resolve([]),
-    userRequest.originIata && destinationIata
+    shouldSearchFlights
       ? deps.searchFlights({
-          originIata: destinationIata,
-          destinationIata: userRequest.originIata,
+          originIata: destinationIata!,
+          destinationIata: originIata,
           departureDate: userRequest.travelEndDate,
           adults: userRequest.adults,
           children: userRequest.children,
@@ -67,6 +70,16 @@ export const runItineraryAgent = async (
       endDate: userRequest.travelEndDate,
     }),
   ]);
+
+  const flightOptions =
+    outboundResult.status === "fulfilled" ? outboundResult.value : [];
+  const returnFlightOptions =
+    returnResult.status === "fulfilled" ? returnResult.value : [];
+
+  if (weatherResult.status === "rejected") {
+    throw weatherResult.reason;
+  }
+  const weatherRisks = weatherResult.value;
 
   const recommendedFlight = pickRecommendedFlightOption(
     flightOptions,

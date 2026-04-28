@@ -110,7 +110,7 @@ const graphBuilder = new StateGraph(PlannerStateAnnotation)
   .addEdge("plan_synthesizer", END);
 ```
 
-每条智能体边都会回到 `risk_guard`，确保在整个规划生命周期中持续进行安全扫描。
+每条智能体边都会回到 `risk_guard`，确保在整个规划生命周期中持续进行安全扫描。为降低延迟和成本，风险守卫在同一规划周期内的后续调用中会跳过 LLM 扫描（若安全标记已存在）—— 仅重新运行低成本的规则检查。
 
 ## 2.4 路由逻辑
 
@@ -204,7 +204,7 @@ POST 处理器使用 Zod 校验载荷，捕获 `ToolError` 并映射为 `502 Bad
 所有外部 API 调用都通过 `src/tools/common/http.ts` 中的 `requestJson()`，提供：
 
 - **超时**：默认 15 秒，使用 `AbortController`
-- **重试**：2 次重试，指数退避（150ms × 尝试次数）
+- **重试**：2 次重试，指数退避（`150ms × 2^attempt × random(0.85, 1.15)`）
 - **类型化错误**：`ToolError` 含代码（`AUTH_ERROR`、`RATE_LIMIT`、`UPSTREAM_TIMEOUT`、`UPSTREAM_BAD_RESPONSE`、`NETWORK_ERROR`、`VALIDATION_ERROR`）
 
 ### 模式校验

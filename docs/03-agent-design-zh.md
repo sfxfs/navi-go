@@ -79,8 +79,8 @@ async (state: PlannerState, deps?: AgentDependencies): Promise<Partial<PlannerSt
 输出:  safetyFlags, decisionLog
 ```
 
-- **LLM 扫描**：使用 `model.withStructuredOutput(RiskGuardSchema)` 语义检测提示注入尝试与不安全输出模式。
-- **规则扫描**：`detectPromptInjection(...)`（`src/security/guardrails.ts`）应用正则模式，并支持零宽字符与 homoglyph 归一化。
+- **LLM 扫描**：使用 `model.withStructuredOutput(RiskGuardSchema)` 语义检测提示注入尝试与不安全输出模式。**优化**：若同一规划周期内前次风险守卫已产生安全标记，则跳过 LLM 扫描（避免冗余 LLM 调用，每次约 1-2 秒）。
+- **规则扫描**：`detectPromptInjection(...)`（`src/security/guardrails.ts`）应用正则模式，并支持零宽字符与 homoglyph 归一化。规则检查始终运行（低成本）。
 - **输出扫描**：若 `finalPlan` 存在，对摘要运行 `detectUnsafeOutput(...)`。
 - 标记前缀为 `BLOCKED_PROMPT_INJECTION:` 或 `UNSAFE_OUTPUT:`。
 - 路由器（`routeFromRiskGuard`）将阻断请求直接路由到计划合成器以生成安全拒答。
@@ -164,7 +164,7 @@ DestinationCandidateSchema = z.object({
 - **去程**：origin → destination，日期为 `travelStartDate`
 - **返程**：destination → origin，日期为 `travelEndDate`
 
-航班选项通过 `pickRecommendedFlightOption()`（`src/agents/flight-option-selection.ts`）排序，优先选择抵达时间不晚于旅行开始日期的航班，然后按更早抵达、更低价格、更早起飞排序。
+航班选项通过 `pickRecommendedFlightOption()`（`src/agents/flight-option-selection.ts`）的 O(n) min-find reduce 进行排序，优先选择抵达时间不晚于旅行开始日期的航班，然后按更早抵达、更低价格、更早起飞排序。
 
 ### 天气风险评估
 

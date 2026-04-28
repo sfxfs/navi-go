@@ -80,7 +80,12 @@ export const pickRecommendedFlightOption = (
     return undefined;
   }
 
-  return [...flightOptions].sort((left, right) =>
-    compareFlightOptions(left, right, travelStartDate),
-  )[0];
+  return flightOptions.reduce<FlightOption | undefined>((best, current) => {
+    if (best === undefined) {
+      return current;
+    }
+    return compareFlightOptions(current, best, travelStartDate) < 0
+      ? current
+      : best;
+  }, undefined);
 };

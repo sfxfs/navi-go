@@ -118,7 +118,10 @@ export const requestJson = async <TResponse>(
         });
       }
 
-      await sleep(150 * (attempt + 1));
+      // Exponential backoff with jitter: base * 2^attempt * random factor
+      const baseMs = 150;
+      const jitter = Math.random() * 0.3 + 0.85; // 0.85-1.15x
+      await sleep(baseMs * Math.pow(2, attempt) * jitter);
     } finally {
       clearTimeout(timeout);
     }

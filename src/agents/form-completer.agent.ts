@@ -54,20 +54,23 @@ Return:
 `);
 
   if (generated.isComplete && generated.userRequest) {
-    const userRequest = UserRequestSchema.parse(generated.userRequest);
-    return {
-      userRequest,
-      pendingQuestions: [],
-      decisionLog: [
-        makeDecisionLog({
-          agent: "form_completer",
-          inputSummary: "Validated parsed request for completeness via LLM",
-          keyEvidence: ["All required fields present"],
-          outputSummary: "Assembled complete UserRequest",
-          riskFlags: [],
-        }),
-      ],
-    };
+    const parsedUserRequest = UserRequestSchema.safeParse(generated.userRequest);
+    if (parsedUserRequest.success) {
+      return {
+        userRequest: parsedUserRequest.data,
+        pendingQuestions: [],
+        decisionLog: [
+          makeDecisionLog({
+            agent: "form_completer",
+            inputSummary: "Validated parsed request for completeness via LLM",
+            keyEvidence: ["All required fields present"],
+            outputSummary: "Assembled complete UserRequest",
+            riskFlags: [],
+          }),
+        ],
+      };
+    }
+    // LLM returned structurally invalid userRequest — fall through to pending questions
   }
 
   const pendingQuestions =

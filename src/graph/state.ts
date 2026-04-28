@@ -157,7 +157,11 @@ export const PlannerStateAnnotation = Annotation.Root({
     default: () => [],
   }),
   decisionLog: Annotation<DecisionLogEntry[]>({
-    reducer: (left, right) => left.concat(right),
+    reducer: (left, right) => {
+      const merged = left.concat(right);
+      // Cap at 100 entries to prevent unbounded growth across multi-turn chat sessions
+      return merged.length > 100 ? merged.slice(merged.length - 100) : merged;
+    },
     default: () => [],
   }),
   finalPlan: Annotation<FinalPlan | null>({

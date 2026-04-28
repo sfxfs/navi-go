@@ -143,20 +143,33 @@ export const registerPlanRoutes = (
         configurable: { thread_id: payload.threadId },
       });
 
-      const currentParsed =
-        (snapshot.values.parsedRequest as Record<string, unknown>) ?? {};
-      const merged = { ...currentParsed, ...payload.answers };
+      const currentParsed = snapshot.values.parsedRequest ?? {};
+      const mergedParsed = ParsedRequestSchema.safeParse({
+        ...currentParsed,
+        ...payload.answers,
+      });
+
+      if (!mergedParsed.success) {
+        return reply.status(400).send({
+          error: "VALIDATION_ERROR",
+          message: "Merged parsed request is invalid",
+          issues: mergedParsed.error.issues.map((i) => ({
+            path: i.path,
+            message: i.message,
+          })),
+        });
+      }
 
       const result = await graph.invoke(
         {
-          parsedRequest: merged,
+          parsedRequest: mergedParsed.data,
           pendingQuestions: [],
         },
         {
           configurable: { thread_id: payload.threadId },
           metadata: buildTraceMetadata({
             userId:
-              (merged.userId as string | undefined) ??
+              mergedParsed.data.userId ??
               snapshot.values.userRequest?.userId ??
               "anonymous",
             threadId: payload.threadId,
