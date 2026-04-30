@@ -346,6 +346,7 @@ describe("LLM-as-judge quality eval", () => {
               err instanceof Error &&
               (err.message.includes('NETWORK_ERROR') ||
                 err.message.includes('fetch failed'));
+            // Retry transient errors; fall back immediately on upstream errors (400, 500, etc.)
             if (isTransient && attempt < maxRetries) {
               console.log(
                 `  [eval] Weather fetch transient error (attempt ${attempt + 1}/${maxRetries + 1}), retrying...`,
@@ -353,16 +354,12 @@ describe("LLM-as-judge quality eval", () => {
               await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
               continue;
             }
-            if (attempt === maxRetries) {
-              console.log(
-                `  [eval] Weather fetch failed after ${maxRetries + 1} attempts — using fallback weather data`,
-              );
-              return buildFallbackWeather(input);
-            }
-            throw err;
+            console.log(
+              `  [eval] Weather fetch failed (${err instanceof Error ? err.message : 'unknown'}) — using fallback weather data`,
+            );
+            return buildFallbackWeather(input);
           }
         }
-        // Unreachable, but TypeScript needs it
         return buildFallbackWeather(input);
       };
 
@@ -384,6 +381,7 @@ describe("LLM-as-judge quality eval", () => {
               err instanceof Error &&
               (err.message.includes('NETWORK_ERROR') ||
                 err.message.includes('fetch failed'));
+            // Retry transient errors; fall back immediately on upstream errors
             if (isTransient && attempt < maxRetries) {
               console.log(
                 `  [eval] Flight search transient error (attempt ${attempt + 1}/${maxRetries + 1}), retrying...`,
@@ -391,13 +389,10 @@ describe("LLM-as-judge quality eval", () => {
               await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
               continue;
             }
-            if (attempt === maxRetries) {
-              console.log(
-                `  [eval] Flight search failed after ${maxRetries + 1} attempts — using empty results`,
-              );
-              return [];
-            }
-            throw err;
+            console.log(
+              `  [eval] Flight search failed (${err instanceof Error ? err.message : 'unknown'}) — using empty results`,
+            );
+            return [];
           }
         }
         return [];
