@@ -1,0 +1,71 @@
+name: Weekly Quality Eval
+
+on:
+  schedule:
+    # Every Monday at 09:00 UTC
+    - cron: "0 9 * * 1"
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: "24"
+
+jobs:
+  quality-eval:
+    name: LLM-as-Judge Quality Regression Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      issues: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run LLM-as-judge quality eval
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: ${{ vars.OPENAI_MODEL || 'gpt-4o-mini' }}
+          DUFFEL_API_TOKEN: ${{ secrets.DUFFEL_API_TOKEN }}
+        run: npx vitest run tests/evals/llm-judge-quality.eval.ts --reporter=verbose
+
+      - name: Create issue on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const runUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
+            const body = `## Weekly LLM Quality Eval Failed
+
+            The [weekly quality eval run](${runUrl}) detected a regression in AI-generated travel plan quality.
+
+            **What this means**: One or more scenarios scored below the acceptance threshold on itinerary coherence, budget accuracy, packing relevance, or overall plan quality. This could indicate:
+
+            - Model behavior change (OpenAI model update)
+            - Prompt regression from a recent change
+            - External API degradation affecting data quality
+
+            **Next steps**:
+            1. Review the [workflow logs](${runUrl}) for per-scenario judge scores
+            2. Compare against last passing run
+            3. Check for recent changes to agent prompts or model configuration
+            4. If model-drift: consider prompt tuning or model version pinning
+
+            > This issue was auto-created by the weekly quality eval workflow.`;
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: "Weekly LLM quality eval detected regression",
+              body,
+              labels: ["eval", "quality", "automated"],
+            });
