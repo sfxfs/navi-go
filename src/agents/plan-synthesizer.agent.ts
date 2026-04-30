@@ -22,8 +22,8 @@ const PlanSynthesisSchema = z.object({
 const buildFinalPlan = (params: {
   summary: string;
   selectedDestination: string;
-  selectedFlightOfferId: string | undefined;
-  selectedReturnFlightOfferId: string | undefined;
+  selectedFlightOfferId: string | null;
+  selectedReturnFlightOfferId: string | null;
   itineraryDraft: PlannerState["itineraryDraft"];
   budgetAssessment: BudgetAssessment;
   packingList: PlannerState["packingList"];
@@ -57,8 +57,8 @@ export const runPlanSynthesizerAgent = async (
     flag.startsWith("BLOCKED_PROMPT_INJECTION"),
   );
   const selectedDestination = state.destinationCandidates[0]?.name ?? "Not resolved";
-  const selectedFlightOfferId = state.selectedFlightOfferId ?? undefined;
-  const selectedReturnFlightOfferId = state.selectedReturnFlightOfferId ?? undefined;
+  const selectedFlightOfferId = state.selectedFlightOfferId;
+  const selectedReturnFlightOfferId = state.selectedReturnFlightOfferId;
 
   if (blocked) {
     const summary =

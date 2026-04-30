@@ -35,7 +35,7 @@ export const ItineraryDaySchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   theme: z.string(),
   activities: z.array(z.string()),
-  weatherNote: z.string().optional(),
+  weatherNote: z.string().nullable(),
 });
 
 export const BudgetAssessmentSchema = z.object({
@@ -57,8 +57,8 @@ export const DecisionLogEntrySchema = z.object({
 export const FinalPlanSchema = z.object({
   summary: z.string(),
   selectedDestination: z.string(),
-  selectedFlightOfferId: z.string().optional(),
-  selectedReturnFlightOfferId: z.string().optional(),
+  selectedFlightOfferId: z.string().nullable(),
+  selectedReturnFlightOfferId: z.string().nullable(),
   itinerary: z.array(ItineraryDaySchema),
   budget: BudgetAssessmentSchema,
   packingList: z.array(z.string()),

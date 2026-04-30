@@ -36,9 +36,9 @@ const makeState = (budget: number): PlannerState => ({
   returnFlightOptions: [],
   weatherRisks: null,
   itineraryDraft: [
-    { date: "2026-07-01", theme: "museum", activities: ["A"] },
-    { date: "2026-07-02", theme: "museum", activities: ["B"] },
-    { date: "2026-07-03", theme: "museum", activities: ["C"] },
+    { date: "2026-07-01", theme: "museum", activities: ["A"], weatherNote: null },
+    { date: "2026-07-02", theme: "museum", activities: ["B"], weatherNote: null },
+    { date: "2026-07-03", theme: "museum", activities: ["C"], weatherNote: null },
   ],
   budgetAssessment: null,
   packingList: [],
