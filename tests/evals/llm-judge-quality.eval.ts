@@ -6,8 +6,9 @@ import { buildPlannerGraph, type PlannerGraphDependencies } from "../../src/grap
 import { createInMemoryCheckpointer } from "../../src/persistence/checkpointer.js";
 import { getEnv } from "../../src/config/env.js";
 import { FinalPlanSchema, type FinalPlan } from "../../src/graph/state.js";
-import { searchFlightOffers } from "../../src/tools/flights/duffel-flight.tool.js";
-import { fetchWeatherRiskSummary } from "../../src/tools/weather/openmeteo-weather.tool.js";
+import { searchFlightOffers, type FlightSearchInput } from "../../src/tools/flights/duffel-flight.tool.js";
+import { fetchWeatherRiskSummary, type WeatherSearchInput } from "../../src/tools/weather/openmeteo-weather.tool.js";
+import type { WeatherRiskSummary, FlightOption } from "../../src/graph/state.js";
 
 /**
  * LLM-as-Judge Quality Eval
@@ -19,7 +20,7 @@ import { fetchWeatherRiskSummary } from "../../src/tools/weather/openmeteo-weath
  *
  * Requires OPENAI_API_KEY. Gated on env presence.
  * DUFFEL_API_TOKEN is optional — falls back to empty flight results.
- * Open-Meteo weather is always available (no API key).
+ * Open-Meteo weather uses retry + fallback for transient network errors.
  */
 
 const hasOpenAiKey = Boolean(process.env.OPENAI_API_KEY);
@@ -275,6 +276,34 @@ function computeComposite(judge: JudgeOutput): number {
 }
 
 // ---------------------------------------------------------------------------
+// Fallback weather for transient network failures
+// ---------------------------------------------------------------------------
+
+const buildFallbackWeather = (
+  input: WeatherSearchInput,
+): WeatherRiskSummary => {
+  const start = new Date(input.startDate);
+  const end = new Date(input.endDate);
+  const days: WeatherRiskSummary['daily'] = [];
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    days.push({
+      date: d.toISOString().slice(0, 10),
+      weatherCode: 3, // Overcast
+      temperatureMax: 20,
+      temperatureMin: 10,
+      precipitationProbabilityMax: 30,
+      riskLevel: 'LOW' as const,
+    });
+  }
+  return {
+    location: input.destination,
+    timezone: undefined,
+    daily: days,
+    highRiskDates: [],
+  };
+};
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -305,19 +334,80 @@ describe("LLM-as-judge quality eval", () => {
       });
 
       const hasDuffel = Boolean(env.DUFFEL_API_TOKEN);
+      const resilientFetchWeather = async (
+        input: WeatherSearchInput,
+      ): Promise<WeatherRiskSummary> => {
+        const maxRetries = 2;
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+          try {
+            return await fetchWeatherRiskSummary(input);
+          } catch (err) {
+            const isTransient =
+              err instanceof Error &&
+              (err.message.includes('NETWORK_ERROR') ||
+                err.message.includes('fetch failed'));
+            if (isTransient && attempt < maxRetries) {
+              console.log(
+                `  [eval] Weather fetch transient error (attempt ${attempt + 1}/${maxRetries + 1}), retrying...`,
+              );
+              await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
+              continue;
+            }
+            if (attempt === maxRetries) {
+              console.log(
+                `  [eval] Weather fetch failed after ${maxRetries + 1} attempts — using fallback weather data`,
+              );
+              return buildFallbackWeather(input);
+            }
+            throw err;
+          }
+        }
+        // Unreachable, but TypeScript needs it
+        return buildFallbackWeather(input);
+      };
+
+      const resilientSearchFlights = async (
+        input: FlightSearchInput,
+      ): Promise<FlightOption[]> => {
+        if (!hasDuffel) {
+          console.log(
+            "  [eval] DUFFEL_API_TOKEN not set — using empty flight results",
+          );
+          return [];
+        }
+        const maxRetries = 2;
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+          try {
+            return await searchFlightOffers(input);
+          } catch (err) {
+            const isTransient =
+              err instanceof Error &&
+              (err.message.includes('NETWORK_ERROR') ||
+                err.message.includes('fetch failed'));
+            if (isTransient && attempt < maxRetries) {
+              console.log(
+                `  [eval] Flight search transient error (attempt ${attempt + 1}/${maxRetries + 1}), retrying...`,
+              );
+              await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
+              continue;
+            }
+            if (attempt === maxRetries) {
+              console.log(
+                `  [eval] Flight search failed after ${maxRetries + 1} attempts — using empty results`,
+              );
+              return [];
+            }
+            throw err;
+          }
+        }
+        return [];
+      };
 
       const plannerDeps: PlannerGraphDependencies = {
         model: plannerModel,
         itineraryAgentDependencies: {
-          searchFlights: hasDuffel
-            ? searchFlightOffers
-            : async () => {
-                console.log(
-                  "  [eval] DUFFEL_API_TOKEN not set — using empty flight results",
-                );
-                return [];
-              },
-          fetchWeather: fetchWeatherRiskSummary,
+          searchFlights: resilientSearchFlights,
+          fetchWeather: resilientFetchWeather,
         },
       };
 
